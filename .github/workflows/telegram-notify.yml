@@ -1,0 +1,75 @@
+name: 💬 Telegram Notifications
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: 'src/SimpleApp'
+  TEST_PATH: 'tests/SimpleApp.Tests'
+
+jobs:
+  build:
+    name: 💡 Сборка проекта
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - run: dotnet restore
+      - run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+      - uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            **Начинаем сборку!**
+            *Проект:* ${{ github.repository }}
+            *Автор:* ${{ github.actor }}
+            *Ветка:* ${{ github.ref_name }}
+            *Коммит:* ${GITHUB_SHA:0:7}
+            Ждите результат...
+          parse_mode: markdown
+
+  test:
+    name: ✅ Запуск тестов
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - run: dotnet test ${{ env.TEST_PATH }} --verbosity normal --logger "trx"
+
+  notify:
+    name: 📨 Итоговое уведомление
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            @if (success()) {
+            *СБОРКА УСПЕШНА!*
+            Все этапы пройдены!
+            }
+            @if (failure()) {
+            *СБОРКА НЕ УДАЛАСЬ!*
+            Статус джоб:
+            Сборка: ${{ needs.build.result }}
+            Тесты: ${{ needs.test.result }}
+            }
+            *Детали:*
+            Проект: ${{ github.repository }}
+            Ветка: ${{ github.ref_name }}
+            Коммит: ${GITHUB_SHA:0:7}
+            [Открыть в Github](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          parse_mode: markdown
